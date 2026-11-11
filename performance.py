@@ -56,8 +56,7 @@ def main():
 
     performance = []
 
-    # for dx in (0.2, 0.1, 0.05, 0.025):
-    for dx in (0.1, 0.05):# (0.4, 0.2, 0.1, 0.05):
+    for dx in (0.4, 0.2, 0.1, 0.05):
         nx = ny = int(round(2*L/dx)) + 1
         nz = int(round(2*H/dx)) + 1
         x = jnp.linspace(-L, L, nx)
@@ -69,7 +68,7 @@ def main():
 
         @jax.jit
         def forward(S):
-            return solve_u(S, dx, tol=1.0e-3)
+            return solve_u(S, dx, tol=1.0e-3, maxiter=100)
 
         # Solve: warm up, then measure.
         forward(S).block_until_ready()

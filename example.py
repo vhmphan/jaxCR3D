@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 from src.source import make_source_prior
 from src.solver import solve_u, sheet_source, residual_norm
-
+from src.gsnr import func_g, func_gSNR_AMS09
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -29,11 +29,39 @@ def main():
     y = jnp.linspace(-L, L, ny)
     z = jnp.linspace(-H, H, nz)
 
-    source = make_source_prior((nx-2, ny-2), dx)
-    latent = source.init(jax.random.PRNGKey(args.seed))
-    g = source(latent)
+    # Distance squared from Earth.
+    r2 = (
+        (x[:, None, None] - 8.0)**2
+        + y[None, :, None]**2
+        + z[None, None, :]**2
+    )
+
+    mask = r2 <= 1.25**2
+
+    # source = make_source_prior((nx-2, ny-2), dx)
+    # latent = source.init(jax.random.PRNGKey(args.seed))
+    # g = source(latent)
+
+    # Compute the radial normalization.
+    arr_rG = np.linspace(0.0, 17.2, 1000)
+    phi = np.linspace(0.0, 2.0 * np.pi, 2000, endpoint=False)
+
+    arr_frG = np.zeros_like(arr_rG)
+
+    for i, radius in enumerate(arr_rG):
+        arr_frG[i] = np.mean(func_g(radius, phi))
+
+    X, Y = np.meshgrid(x, y, indexing="ij")  # Shape: (nx, ny)
+
+    rG = np.hypot(X, Y)
+    phiG = np.mod(np.arctan2(Y, X), 2.0 * np.pi)
+
+    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1]
+    print(g.shape)
+
     S = sheet_source(g, nz, dx)
     U = solve_u(S, dx)
+    U_masked = np.where(mask, U, np.nan)
     print("Backend:", jax.default_backend())
     print("Cube shape:", U.shape)
     print("Relative stencil residual:", float(residual_norm(U, S, dx)))
@@ -42,7 +70,8 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     tag = np.format_float_positional(dx, trim="-").replace(".", "p")
     np.save(output / f"mock_g_dx_{tag}.npy", np.asarray(g, dtype=np.float64))
-    np.save(output / f"mock_u_dx_{tag}.npy", np.asarray(U, dtype=np.float64))
+    np.save(output / f"mock_u_dx_{tag}.npy", np.asarray(U_masked, dtype=np.float64))
+    np.save(output / f"mock_ufull_dx_{tag}.npy", np.asarray(U, dtype=np.float64))
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
     for ax, xx, yy, field, title in zip(

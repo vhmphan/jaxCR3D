@@ -62,8 +62,7 @@ def main():
 
     performancejs = []
 
-    # for dx in (0.2, 0.1, 0.05, 0.025):
-    for dx in (0.1, 0.05): #(0.4, 0.2): #, 0.1, 0.05):
+    for dx in (0.4, 0.2, 0.1, 0.05):
         nx = ny = int(round(2*L/dx)) + 1
         nz = int(round(2*H/dx)) + 1
         x = jnp.linspace(-L, L, nx)
