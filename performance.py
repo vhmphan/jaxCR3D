@@ -14,6 +14,20 @@ import matplotlib.pyplot as plt
 from src.source import make_source_prior
 from src.solver import solve_u, sheet_source, residual_norm
 
+def estimate_memory(func, *args):
+    stats = func.lower(*args).compile().memory_analysis()
+
+    if stats is None:
+        return float("nan")  # Not supported by this backend.
+
+    total = (
+        stats.argument_size_in_bytes
+        + stats.output_size_in_bytes
+        + stats.temp_size_in_bytes
+        - stats.alias_size_in_bytes
+    )
+    return total / 1024**3  # GiB
+
 def func_g_ana(x, y, z):
     L = x[-1]
     H = z[-1]
@@ -40,9 +54,10 @@ def main():
     args = parser.parse_args()
     L, H = args.L, args.H
 
-    runtimes = []
+    performance = []
 
-    for dx in (0.4, 0.2, 0.1, 0.05):
+    # for dx in (0.2, 0.1, 0.05, 0.025):
+    for dx in (0.1, 0.05):# (0.4, 0.2, 0.1, 0.05):
         nx = ny = int(round(2*L/dx)) + 1
         nz = int(round(2*H/dx)) + 1
         x = jnp.linspace(-L, L, nx)
@@ -52,27 +67,79 @@ def main():
         g_exact, U_exact = func_g_ana(x, y, z)
         S = sheet_source(g_exact, nz, dx)
 
-        # Warm up for this grid size.
-        solve_u(S, dx).block_until_ready()
+        @jax.jit
+        def forward(S):
+            return solve_u(S, dx, tol=1.0e-3)
 
-        # Measure runtime.
+        # Solve: warm up, then measure.
+        forward(S).block_until_ready()
+
         start = time.perf_counter()
-        U = solve_u(S, dx)
+        U = forward(S)
         U.block_until_ready()
-        elapsed = time.perf_counter() - start
+        elapsed_solve = time.perf_counter() - start
 
-        size = np.log((nx-1)*(ny-1)*(nz-1)) / np.log(2.0)
-        runtimes.append((size, elapsed))
-        print(f"size={size:g}, shape={U.shape}, runtime={elapsed:.6f} s")
+        # JVP: solution + tangent for a source perturbation dS.
+        dS = jnp.ones_like(S)
 
-        # Save after each run so completed results are retained.
+        @jax.jit
+        def compute_jvp(S, dS):
+            return jax.jvp(forward, (S,), (dS,))
+
+        jax.block_until_ready(compute_jvp(S, dS))
+
+        start = time.perf_counter()
+        U_jvp, dU = compute_jvp(S, dS)
+        jax.block_until_ready((U_jvp, dU))
+        elapsed_jvp = time.perf_counter() - start
+
+        # VJP: construct the pullback outside the timed section.
+        U_vjp, pullback = jax.vjp(forward, S)
+        U_vjp.block_until_ready()
+
+        grad_U = jnp.ones_like(U_vjp)
+        compute_vjp = jax.jit(pullback)
+
+        jax.block_until_ready(compute_vjp(grad_U))
+
+        start = time.perf_counter()
+        grad_S, = compute_vjp(grad_U)
+        grad_S.block_until_ready()
+        elapsed_vjp = time.perf_counter() - start
+
+        size = np.log2((nx-1)*(ny-1)*(nz-1))
+
+        # Compiler estimates; keep these outside the runtime measurements.
+        mem_solve = estimate_memory(forward, S)
+        mem_jvp = estimate_memory(compute_jvp, S, dS)
+        mem_vjp = estimate_memory(compute_vjp, grad_U)
+       
+        # memory_results.append((size, mem_solve, mem_jvp, mem_vjp))
+        performance.append((size, elapsed_solve, elapsed_jvp, elapsed_vjp, mem_solve, mem_jvp, mem_vjp))
+
+        print(
+            f"size={size:g}, shape={U.shape}, "
+            f"solve={elapsed_solve:.6f} s, "
+            f"JVP={elapsed_jvp:.6f} s, "
+            f"VJP={elapsed_vjp:.6f} s"
+        )
+
+        print(
+            f"Estimated memory: "
+            f"solve={mem_solve:.2f} GiB, "
+            f"JVP={mem_jvp:.2f} GiB, "
+            f"VJP={mem_vjp:.2f} GiB"
+        )
+
+
+        # Save after each grid size.
         np.savetxt(
-            "runtimes.csv",
-            runtimes,
+            "performance.csv",
+            performance,
             delimiter=" ",
-            header="size,runtime_seconds",
+            header="size solve_seconds jvp_seconds vjp_seconds solve_GiB jvp_GiB vjp_GiB",
             comments="",
-            fmt=("%d", "%.8f"),
+            fmt=("%.4f", "%.8f", "%.8f", "%.8f", "%.4f", "%.4f", "%.4f"),
         )
 
     plt.plot(z, U[nx // 2, ny // 2, :], "o", label="Numerical")
@@ -85,6 +152,7 @@ def main():
     plt.savefig('fg_test_nCR_z.png')
 
     dU = np.abs(U[1:-1, 1:-1, nz//2] - U_exact[1:-1, 1:-1, nz//2]) / U_exact[1:-1, 1:-1, nz//2]
+    print("\nMean relative error:", np.mean(dU))
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 5), constrained_layout=True)
 
