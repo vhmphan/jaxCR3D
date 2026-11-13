@@ -25,6 +25,7 @@ path = Path("data/mock_u_dx_0p2.npy")
 dx = float(path.stem.split("_dx_")[-1].replace("p", "."))
 U_data = np.load(path)
 U_mean = np.nanmean(U_data)
+g0 = 0.0015 / U_mean
 mask_data = np.isfinite(U_data)
 nx, ny, nz = U_data.shape
 L, H = (nx - 1) * dx / 2.0, (nz - 1) * dx / 2.0 
@@ -40,7 +41,7 @@ class Forward(jft.Model):
         super().__init__(init=g.init)
 
     def CRcube(self, x):
-        S = sheet_source(self.g(x), nz, dx)
+        S = sheet_source(self.g(x) * g0, nz, dx)
         return solve_u(S, dx)
 
     def masked(self, x):
@@ -57,16 +58,31 @@ forward = Forward(source)
 
 # %%
 key = random.PRNGKey(42)
-key, k_f, k_n = random.split(key, 3)
-synth_truth = U_data[mask_data]/U_mean 
-synth_noise = 0.1 * synth_truth
-synth_data = synth_truth + synth_noise
+# key, k_f, k_n = random.split(key, 3)
+# synth_truth = U_data[mask_data]/U_mean 
+# synth_noise = 0.1 * synth_truth
+# synth_data = synth_truth + synth_noise
+
+synth_truth = jnp.asarray(U_data[mask_data] / U_mean)
+
+relative_std = 0.1
+sigma_log = jnp.sqrt(jnp.log1p(relative_std**2))
+
+key, k_n = jax.random.split(key)
+eps = jax.random.normal(
+    k_n, synth_truth.shape, dtype=synth_truth.dtype
+)
+
+synth_data = synth_truth * jnp.exp(
+    sigma_log * eps - 0.5 * sigma_log**2
+)
+synth_noise = synth_data - synth_truth
 
 # Build likelihood
 lh = jft.Gaussian(synth_data, noise_cov_inv=1.0 / synth_noise**2).amend(forward)
 
 # Hyperparameters for nifty
-n_vi_iterations = 5
+n_vi_iterations = 6
 delta = 1e-6
 n_samples = 4
 
@@ -91,7 +107,7 @@ samples, state = jft.optimize_kl(
     ),
     kl_kwargs=dict(
         minimize_kwargs=dict(
-            name="M", xtol=delta, cg_kwargs=dict(name="MCG"), maxiter=35
+            name="M", xtol=delta, cg_kwargs=dict(name="MCG"), maxiter=100
         )
     ),
     sample_mode="linear_resample",

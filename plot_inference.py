@@ -20,7 +20,7 @@ def add_mask_circle(ax, Lr, zoom=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--samples", type=Path, default=Path("run/g_samples_dx_0p2.npy"))
+    parser.add_argument("--samples", type=Path, default=Path("run-10/g_samples_dx_0p2.npy"))
     parser.add_argument("--truth", type=Path, default=Path("data/mock_g_dx_0p2.npy"))
     parser.add_argument("--zoom", action="store_true", help="Show +/-2 kpc around the mask center (x=8, y=0 kpc).")
     args = parser.parse_args()
@@ -47,10 +47,12 @@ def main():
 
     if(args.zoom==True):
         Lr = 2.0
-        output = "run/fg_posterior_zoom.png"
+        output = "run-10/fg_posterior_zoom.png"
+        output_samp = "run-10/fg_samples_zoom.png"
     else:
         Lr = x[-2]
-        output = "run/fg_posterior.png"
+        output = "run-10/fg_posterior.png"
+        output_samp = "run-10/fg_samples.png"
 
     U_truth_xy = np.asarray(U_truth[1:-1, 1:-1, nz//2])
     U_mean_xy = np.asarray(U_mean[1:-1, 1:-1, nz//2])
@@ -80,7 +82,7 @@ def main():
             norm = shared_norm
             if col == 2:
                 scale = np.nanmean(a)
-                norm = LogNorm(vmin=scale / 100, vmax=scale * 100)
+                norm = LogNorm(vmin=scale / 100, vmax=10.0) # scale * 100)
 
             im = ax.pcolormesh(
                 x, y, a.T,
@@ -104,6 +106,54 @@ def main():
             fig.colorbar(im, cax=cax, label=label)
 
     fig.savefig(output, dpi=150)
+    plt.close(fig)
+
+    fields = (
+        (g_truth, g_samples[0], g_samples[1]),
+        (None,    g_samples[2], g_samples[3]),
+    )
+    titles = (
+        ("Ground truth", "Sample 0", "Sample 1"),
+        ("",            "Sample 2", "Sample 3"),
+    )
+
+    scale = np.nanmean(g_truth)
+    norm = LogNorm(vmin=scale / 5, vmax=scale * 5)
+
+    fig, axes = plt.subplots(
+        2, 3, figsize=(16, 9), constrained_layout=True
+    )
+
+    for row in range(2):
+        for col in range(3):
+            ax = axes[row, col]
+            a = fields[row][col]
+
+            if a is None:
+                ax.set_axis_off()
+                continue
+
+            im = ax.pcolormesh(
+                x, y, np.asarray(a).T,
+                shading="auto",
+                cmap="magma",
+                norm=norm,
+            )
+
+            ax.set(
+                xlabel="x [kpc]",
+                ylabel="y [kpc]",
+                title=titles[row][col],
+                aspect="equal",
+            )
+
+            add_mask_circle(ax, Lr, zoom=args.zoom)
+
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            fig.colorbar(im, cax=cax, label="g")
+
+    fig.savefig(output_samp, dpi=150)
     plt.close(fig)
 
 if __name__ == "__main__":

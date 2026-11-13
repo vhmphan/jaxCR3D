@@ -8,10 +8,10 @@ def make_source_prior(shape, dx):
     """Return a positive NIFTy model, including all spectrum hyperparameters."""
     cfm = jft.CorrelatedFieldMaker("source_")
     # Log-field centered near zero, with modest uncertainty in its mean.
-    cfm.set_amplitude_total_offset(offset_mean=0.0, offset_std=(0.2, 0.05))
+    cfm.set_amplitude_total_offset(offset_mean=0.0, offset_std=(0.7, 0.3))
     cfm.add_fluctuations(
         shape, distances=(dx, dx),
-        fluctuations=(0.5, 0.1), loglogavgslope=(-4.0, 0.5),
+        fluctuations=(0.8, 0.4), loglogavgslope=(-4.0, 0.5),
         flexibility=(0.5, 0.1), asperity=(0.5, 0.1),
         prefix="xy_", non_parametric_kind="power",
     )

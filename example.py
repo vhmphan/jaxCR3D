@@ -66,6 +66,8 @@ def main():
     print("Cube shape:", U.shape)
     print("Relative stencil residual:", float(residual_norm(U, S, dx)))
 
+    print("Mean of grouth truth: ", np.mean(g))
+
     output = args.output_dir
     output.mkdir(parents=True, exist_ok=True)
     tag = np.format_float_positional(dx, trim="-").replace(".", "p")
