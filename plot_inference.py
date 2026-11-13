@@ -10,13 +10,13 @@ from matplotlib.patches import Circle
 def add_mask_circle(ax, Lr, zoom=False):
     """XY boundary (z=0) of the spherical data mask in example.py."""
     ax.add_patch(Circle(
-        (8.0, 0.0), radius=1.25, fill=False,
+        (-8.0, 0.0), radius=1.25, fill=False,
         edgecolor="white", linewidth=1.5, linestyle="--",
         label="Data mask (z = 0)",
     ))
     ax.legend(loc="upper left", fontsize="small")
     if zoom:
-        ax.set(xlim=(8.0 - Lr, 8.0 + Lr), ylim=(-Lr, Lr))
+        ax.set(xlim=(- 8.0 - Lr, -8.0 + Lr), ylim=(-Lr, Lr))
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

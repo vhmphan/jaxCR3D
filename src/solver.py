@@ -35,4 +35,17 @@ def residual_norm(U, S, dx):
 def sheet_source(g, nz, dx):
     """Embed an interior XY source as g/dx on the central z plane."""
     S = jnp.zeros((g.shape[0]+2, g.shape[1]+2, nz), dtype=g.dtype)
-    return S.at[1:-1, 1:-1, nz//2].set(g / dx)
+    return S.at[1:-1, 1:-1, nz//2].set(g) # kpc^-2
+
+
+@partial(jax.jit, static_argnames=("tol", "maxiter"))
+def solve_u_sg(S, sg, dx, *, tol=1e-8, maxiter=2000):
+    """Solve -laplacian(U) + sg*U = S with zero boundary values."""
+    b = S[1:-1, 1:-1, 1:-1]
+    sg_inner = sg[1:-1, 1:-1, 1:-1]
+
+    def operator(u):
+        return laplacian_operator(u, dx) + sg_inner * u
+
+    u, _ = cg(operator, b, tol=tol, maxiter=maxiter)
+    return jnp.pad(u, 1)

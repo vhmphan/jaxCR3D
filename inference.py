@@ -86,9 +86,9 @@ synth_noise = synth_data - synth_truth
 lh = jft.Gaussian(synth_data, noise_cov_inv=1.0 / synth_noise**2).amend(forward)
 
 # Hyperparameters for nifty
-n_vi_iterations = 2
-delta = 1e-4
-n_samples = 2
+n_vi_iterations = 3
+delta = 1e-5
+n_samples = 4
 
 key, k_i, k_o = random.split(key, 3)
 
@@ -117,7 +117,7 @@ samples, state = jft.optimize_kl(
     key=k_o,
     draw_linear_kwargs=dict(
         cg_name="SL",
-        cg_kwargs=dict(absdelta=delta * jft.size(lh.domain) / 10.0, maxiter=35),
+        cg_kwargs=dict(absdelta=delta * jft.size(lh.domain) / 10.0, maxiter=100),
     ),
     nonlinearly_update_kwargs=dict(
         minimize_kwargs=dict(
@@ -129,7 +129,7 @@ samples, state = jft.optimize_kl(
     ),
     kl_kwargs=dict(
         minimize_kwargs=dict(
-            name="M", xtol=delta, cg_kwargs=dict(name="MCG"), maxiter=100
+            name="M", xtol=delta, cg_kwargs=dict(name="MCG"), maxiter=35
         )
     ),
     # sample_mode="linear_resample",

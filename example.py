@@ -31,7 +31,7 @@ def main():
 
     # Distance squared from Earth.
     r2 = (
-        (x[:, None, None] - 8.0)**2
+        (x[:, None, None] + 8.0)**2
         + y[None, :, None]**2
         + z[None, None, :]**2
     )
@@ -57,6 +57,7 @@ def main():
     phiG = np.mod(np.arctan2(Y, X), 2.0 * np.pi)
 
     g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1]
+    g = jnp.rot90(g, k=1)
     print(g.shape)
 
     S = sheet_source(g, nz, dx)
