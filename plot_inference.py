@@ -20,12 +20,23 @@ def add_mask_circle(ax, Lr, zoom=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--samples", type=Path, default=Path("run-10/g_samples_dx_0p2.npy"))
+
+    parser.add_argument("--run-dir", type=Path, default=Path("run"))
+    parser.add_argument("--vi-iteration", type=int, default=1)
+    parser.add_argument("--samples", type=Path, default=Path("g_samples_dx_0p2.npy"))
+    # parser.add_argument("--samples", type=Path, default=Path("run-10/g_samples_dx_0p2.npy"))
     parser.add_argument("--truth", type=Path, default=Path("data/mock_g_dx_0p2.npy"))
     parser.add_argument("--zoom", action="store_true", help="Show +/-2 kpc around the mask center (x=8, y=0 kpc).")
     args = parser.parse_args()
 
-    g_samples = np.load(args.samples)
+    samples_path = (
+        args.run_dir
+        / f"vi-samples-{args.vi_iteration}"
+        / args.samples
+    )
+
+    g_samples = np.load(samples_path)
+    # g_samples = np.load(args.samples)
     g_mean = np.mean(g_samples, axis=0)
     g_truth = np.load(args.truth)
     dg = np.abs(g_mean - g_truth) / g_truth
@@ -45,14 +56,17 @@ def main():
     x = np.linspace(-L, L, nx+2)[1:-1]
     y = np.linspace(-L, L, ny+2)[1:-1]
 
-    if(args.zoom==True):
+    output_dir = args.run_dir / f"vi-samples-{args.vi_iteration}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.zoom:
         Lr = 2.0
-        output = "run-10/fg_posterior_zoom.png"
-        output_samp = "run-10/fg_samples_zoom.png"
+        output = output_dir / "fg_posterior_zoom.png"
+        output_samp = output_dir / "fg_samples_zoom.png"
     else:
         Lr = x[-2]
-        output = "run-10/fg_posterior.png"
-        output_samp = "run-10/fg_samples.png"
+        output = output_dir / "fg_posterior.png"
+        output_samp = output_dir / "fg_samples.png"
 
     U_truth_xy = np.asarray(U_truth[1:-1, 1:-1, nz//2])
     U_mean_xy = np.asarray(U_mean[1:-1, 1:-1, nz//2])

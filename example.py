@@ -17,7 +17,7 @@ from src.gsnr import func_g, func_gSNR_AMS09
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dx", type=float, default=0.2)
-    parser.add_argument("--L", type=float, default=10.0)
+    parser.add_argument("--L", type=float, default=12.0)
     parser.add_argument("--H", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", type=Path, default=Path("data"))
@@ -75,17 +75,23 @@ def main():
     np.save(output / f"mock_u_dx_{tag}.npy", np.asarray(U_masked, dtype=np.float64))
     np.save(output / f"mock_ufull_dx_{tag}.npy", np.asarray(U, dtype=np.float64))
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
-    for ax, xx, yy, field, title in zip(
-        axes, (x[1:-1], x), (y[1:-1], y),
-        (g, U[:, :, nz//2]), ("Source g", f"U at z = {float(z[nz//2]):g}"),
-    ):
-        im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto")
-        fig.colorbar(im, ax=ax)
-        ax.set(xlabel="x", ylabel="y", title=title, aspect="equal")
-    fig.savefig(output / f"fg_mock_dx_{tag}.png", dpi=150)
-    plt.close(fig)
-    print("Saved arrays and plot to", output)
+    source = make_source_prior((nx-2, ny-2), dx)
+    latent = source.init(jax.random.PRNGKey(args.seed))
+    g = source(latent)
+
+    print(np.mean(g))
+
+    # fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
+    # for ax, xx, yy, field, title in zip(
+    #     axes, (x[1:-1], x), (y[1:-1], y),
+    #     (g, U[:, :, nz//2]), ("Source g", f"U at z = {float(z[nz//2]):g}"),
+    # ):
+    #     im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto")
+    #     fig.colorbar(im, ax=ax)
+    #     ax.set(xlabel="x", ylabel="y", title=title, aspect="equal")
+    # fig.savefig(output / f"fg_mock_dx_{tag}.png", dpi=150)
+    # plt.close(fig)
+    # print("Saved arrays and plot to", output)
 
 
 if __name__ == "__main__":
