@@ -59,7 +59,7 @@ def func_D0(E):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dx", type=float, default=0.2)
+    parser.add_argument("--dx", type=float, default=0.1)
     parser.add_argument("--L", type=float, default=12.0)
     parser.add_argument("--H", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=42)
@@ -86,7 +86,7 @@ def main():
     rG = np.hypot(X, Y)
     phiG = np.mod(np.arctan2(Y, X), 2.0 * np.pi)
 
-    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1]
+    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1].T
     g = jnp.rot90(g, k=1)
 
     E = 10.0 # GeV
@@ -97,20 +97,25 @@ def main():
     S = sheet_source(g, nz, dx) * Q0 / D0
     source = make_source_prior((nx-2, ny-2), dx)
     latent = source.init(jax.random.PRNGKey(args.seed))
-    nH = source(latent) * 1.0e3
+    tag = np.format_float_positional(float(dx), trim="-").replace(".", "p")
+    probe_fac = 10.0
+    nH = np.load(f"gas_SOD_dx_{tag}.npy") * probe_fac
+    sg = (nH * sigma_p * beta * 3.0e10) * 365.0 * 86400.0 * 1.0e6 / D0
 
-    sg = sheet_source(nH * sigma_p * beta * 3.0e10, nz, dx) * 365.0 * 86400.0 * 1.0e6 / D0
-    # U = solve_u(S, dx)
+    # nH = source(latent) * 1.0e4
+    # sg = sheet_source(nH * sigma_p * beta * 3.0e10, nz, dx) * 365.0 * 86400.0 * 1.0e6 / D0
+    # print(sg.shape)
+     
     U = solve_u_sg(S, sg, dx) / (3.086e21**3)
 
-    print("%.2e Myr" % ((L)**2/D0))
-    print("%.2e Myr" % (1.0 / (np.mean(nH) * sigma_p * 3.0e10 * 365.0 * 86400.0 * 1.0e6)))    
+    print("Diffusion time: %.2e Myr" % ((L)**2/(2*D0)))
+    print("Loss time:      %.2e Myr" % (1.0 / (np.mean(nH) * sigma_p * 3.0e10 * 365.0 * 86400.0 * 1.0e6)))    
     print("Backend:", jax.default_backend())
-    print("Cube shape:", U.shape)
-    print("Relative stencil residual:", float(residual_norm(U, S, dx)))
+    # print("Cube shape:", U.shape)
+    # print("Relative stencil residual:", float(residual_norm(U, S, dx)))
+    print("Mean of source surface density: ", np.mean(g))
 
-    print("Mean of source surface density: ", np.mean(g))
-    print("Mean of source surface density: ", np.mean(g))
+    surface = (np.sum(nH, axis=2) * (z[1]-z[0]) * 3.086e21 * 8.01e-21)
 
     output = args.output_dir
     output.mkdir(parents=True, exist_ok=True)
@@ -118,15 +123,16 @@ def main():
     np.save(output / f"prop_g_dx_{tag}.npy", np.asarray(g, dtype=np.float64))
     np.save(output / f"prop_ufull_dx_{tag}.npy", np.asarray(U, dtype=np.float64))
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
-    for ax, xx, yy, field, title in zip(
-        axes, (x[1:-1], x), (y[1:-1], y),
-        (nH, U[:, :, nz//2]), ("Source g", f"U at z = {float(z[nz//2]):g}"),
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
+    for ax, xx, yy, field, title, ranges in zip(
+        axes, (x, x, x), (y, y, y),
+        (surface, np.pad(g,1), U[:, :, nz//2]), ("Gas surface density", "Source distribution", f"10 GeV CRs at z = {int(z[nz//2]):g} kpc"),
+        ([0.0, 20.0 * probe_fac], [0, np.max(g)], [0, np.max(U[:, :, nz//2])]),
     ):
-        im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto")
+        im = ax.pcolormesh(xx, yy, np.asarray(field), shading="auto", vmin=ranges[0], vmax=ranges[1], cmap="magma")
         fig.colorbar(im, ax=ax)
         ax.set(xlabel="x", ylabel="y", title=title, aspect="equal")
-    fig.savefig(output / f"fg_mock_dx_{tag}.png", dpi=150)
+    fig.savefig(output / f"fg_transport_dx_{tag}.png", dpi=150)
     plt.close(fig)
     print("Saved arrays and plot to", output)
 

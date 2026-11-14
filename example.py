@@ -56,9 +56,9 @@ def main():
     rG = np.hypot(X, Y)
     phiG = np.mod(np.arctan2(Y, X), 2.0 * np.pi)
 
-    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1]
+    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1].T
     g = jnp.rot90(g, k=1)
-    print(g.shape)
+    # print(g.shape)
 
     S = sheet_source(g, nz, dx)
     U = solve_u(S, dx)
@@ -76,23 +76,23 @@ def main():
     np.save(output / f"mock_u_dx_{tag}.npy", np.asarray(U_masked, dtype=np.float64))
     np.save(output / f"mock_ufull_dx_{tag}.npy", np.asarray(U, dtype=np.float64))
 
-    source = make_source_prior((nx-2, ny-2), dx)
-    latent = source.init(jax.random.PRNGKey(args.seed))
-    g = source(latent)
+    # source = make_source_prior((nx-2, ny-2), dx)
+    # latent = source.init(jax.random.PRNGKey(args.seed))
+    # g = source(latent)
 
-    print(np.mean(g))
+    # print(np.mean(g))
 
-    # fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
-    # for ax, xx, yy, field, title in zip(
-    #     axes, (x[1:-1], x), (y[1:-1], y),
-    #     (g, U[:, :, nz//2]), ("Source g", f"U at z = {float(z[nz//2]):g}"),
-    # ):
-    #     im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto")
-    #     fig.colorbar(im, ax=ax)
-    #     ax.set(xlabel="x", ylabel="y", title=title, aspect="equal")
-    # fig.savefig(output / f"fg_mock_dx_{tag}.png", dpi=150)
-    # plt.close(fig)
-    # print("Saved arrays and plot to", output)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
+    for ax, xx, yy, field, title in zip(
+        axes, (x[1:-1], x), (y[1:-1], y),
+        (g, U[:, :, nz//2]), ("Source g", f"U at z = {float(z[nz//2]):g}"),
+    ):
+        im = ax.pcolormesh(xx, yy, np.asarray(field), shading="auto", cmap="magma")
+        fig.colorbar(im, ax=ax)
+        ax.set(xlabel="x (kpc)", ylabel="y (kpc)", title=title, aspect="equal")
+    fig.savefig(output / f"fg_mock_dx_{tag}.png", dpi=150)
+    plt.close(fig)
+    print("Saved arrays and plot to", output)
 
 
 if __name__ == "__main__":
