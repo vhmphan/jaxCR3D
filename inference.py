@@ -20,6 +20,100 @@ from src.solver import solve_u, sheet_source, residual_norm
 
 jax.config.update("jax_enable_x64", True)
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_mock_data(U_data, L, nx, dx, Lr=None, fg_name=None):
+    tag = np.format_float_positional(float(dx), trim="-").replace(".", "p")
+    x = y = np.linspace(-L, L, nx)
+
+    U_full = np.load(f"data/mock_ufull_dx_{tag}.npy")
+    U_data = np.asarray(U_data)
+
+    iz = U_full.shape[2] // 2
+    full_xy = U_full[:, :, iz]
+    data_xy = U_data[:, :, iz]
+
+    # Leave missing observations and zero-denominator points masked.
+    relative_error = np.full(full_xy.shape, np.nan)
+    valid = (
+        np.isfinite(full_xy)
+        & np.isfinite(data_xy)
+        & (full_xy > 0)
+    )
+    relative_error[valid] = (
+        np.abs(full_xy[valid] - data_xy[valid]) / full_xy[valid]
+    )
+
+    # Exact agreement is displayed at the bottom of the color scale.
+    log_error = np.log10(np.maximum(relative_error, 1e-3))
+
+    if Lr is None:
+        xlim, ylim = (-L, L), (-L, L)
+    else:
+        xlim = (-8 - Lr, -8 + Lr)
+        ylim = (-Lr, Lr)
+
+    region = (
+        (x[:, None] >= xlim[0]) & (x[:, None] <= xlim[1])
+        & (y[None, :] >= ylim[0]) & (y[None, :] <= ylim[1])
+    )
+
+    values = np.concatenate([
+        full_xy[region].ravel(),
+        data_xy[region].ravel(),
+    ])
+    values = values[np.isfinite(values) & (values > 0)]
+    vmin, vmax = np.percentile(values, [2, 98])
+
+    fig, axes = plt.subplots(
+        1, 3, figsize=(18, 5), constrained_layout=True
+    )
+
+    for i, (ax, field, title) in enumerate(zip(
+        axes,
+        (full_xy, data_xy, log_error),
+        ("Full solution", "Mock data", "Log relative error"),
+    )):
+        im = ax.pcolormesh(
+            x, y, field.T,
+            shading="auto",
+            cmap="magma",
+            vmin=-3 if i == 2 else vmin,
+            vmax=1 if i == 2 else vmax,
+        )
+
+        ax.set(
+            xlabel="x (kpc)",
+            ylabel="y (kpc)",
+            title=title,
+            aspect="equal",
+            xlim=xlim,
+            ylim=ylim,
+        )
+
+        if i == 0:
+            im_U = im
+        elif i == 2:
+            im_error = im
+
+    cbar = fig.colorbar(im_U, ax=axes[:2], pad=0.02)
+    cbar.formatter.set_powerlimits((0, 0))
+    cbar.update_ticks()
+
+    fig.colorbar(
+        im_error, ax=axes[2], pad=0.02,
+        ticks=[-3, -2, -1, 0, 1],
+        label=r"$\log_{10}(|U_{\rm full}-U_{\rm data}|/U_{\rm full})$",
+    )
+
+    suffix = fg_name
+    fig.savefig(f"data/fg_test_dx_{tag}{suffix}.png", dpi=150)
+    plt.close(fig)
+
+    return 0
+
+
 def sampler(i):
     """30 % linear, 50 % nonlinear, 20 % update -- as a fraction, so it scales."""
     frac = i / n_vi_iterations
@@ -37,21 +131,8 @@ mask_data = np.isfinite(U_data)
 nx, ny, nz = U_data.shape
 L, H = (nx - 1) * dx / 2.0, (nz - 1) * dx / 2.0 
 
-x = y = np.linspace(-L, L, nx)
-
-fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
-for ax, xx, yy, field, title in zip(
-    axes, (x, x), (y, y),
-    (U_data[:, :, nz//2], U_data[:, :, nz//2]), ("Source g", f"U"),
-):
-    im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto", cmap="magma")
-    fig.colorbar(im, ax=ax)
-    ax.set(xlabel="x (kpc)", ylabel="y (kpc)", title=title, aspect="equal")
-fig.savefig("data/fg_test_dx_{tag}.png", dpi=150)
-plt.close(fig)
-
-
 print("Cosmic-ray halo:", L, "x", H, "kpc")
+print("Cosmic-ray grid: (", nx, ny, nz,")")
 
 source = make_source_prior((nx-2, ny-2), dx)
 
@@ -78,23 +159,39 @@ forward = Forward(source)
 # Build noise for mock data
 key = random.PRNGKey(42)
 
-synth_truth = jnp.asarray(U_data[mask_data])
+# latent = source.init(jax.random.PRNGKey(43))
+# g = source(latent)
+# print(g[10, 10], g[-10, -10], np.mean(g), np.std(g))
 
+# Data in log space.
+truth = jnp.asarray(U_data)  # Must be positive.
 relative_std = 0.1
 sigma_log = jnp.sqrt(jnp.log1p(relative_std**2))
 
 key, k_n = jax.random.split(key)
-eps = jax.random.normal(
-    k_n, synth_truth.shape, dtype=synth_truth.dtype
-)
-
-synth_data = synth_truth * jnp.exp(
+eps = jax.random.normal(k_n, truth.shape, dtype=truth.dtype)
+synth_data = truth * jnp.exp(
     sigma_log * eps - 0.5 * sigma_log**2
 )
-synth_noise = synth_data - synth_truth
+log_data = jnp.log(synth_data) + 0.5 * sigma_log**2
+log_data = log_data[mask_data]
 
-# Build likelihood
-lh = jft.Gaussian(synth_data, noise_cov_inv=1.0 / synth_noise**2).amend(forward)
+plot_mock_data(U_data, L, nx, dx, Lr=None, fg_name="origin-full")
+plot_mock_data(U_data, L, nx, dx, Lr=2, fg_name="origin-zoom")
+plot_mock_data(synth_data, L, nx, dx, Lr=2, fg_name="noise-zoom")
+
+# Predict log(U) at the observed locations.
+log_forward = jft.Model(
+    lambda latent: jnp.log(forward(latent)),
+    domain=forward.domain,
+    init=forward.init,
+)
+
+# Log-space noise variance is sigma_log**2.
+lh = jft.Gaussian(
+    log_data,
+    noise_cov_inv=1.0 / (sigma_log*eps[mask_data])**2,
+).amend(log_forward)
 
 # Hyperparameters for nifty
 n_vi_iterations = 20

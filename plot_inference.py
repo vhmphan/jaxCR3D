@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.patches import Circle
+from matplotlib.ticker import FuncFormatter
 
 def add_mask_circle(ax, Lr, zoom=False):
     """XY boundary (z=0) of the spherical data mask in example.py."""
@@ -23,7 +24,7 @@ def main():
 
     parser.add_argument("--dx", type=float, default=0.1)
     parser.add_argument("--run-dir", type=Path, default=Path("run"))
-    parser.add_argument("--vi-iteration", type=int, default=1)
+    parser.add_argument("--vi-iteration", type=int, default=20)
     parser.add_argument("--samples", type=Path, default=None)
     parser.add_argument("--truth", type=Path, default=None)
     parser.add_argument(
@@ -32,12 +33,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    # samples_path = (
-    #     args.run_dir
-    #     / f"vi-samples-{args.vi_iteration}"
-    #     / args.samples
-    # )
 
     tag = np.format_float_positional(args.dx, trim="-").replace(".", "p")
 
@@ -52,11 +47,17 @@ def main():
         args.truth = Path("data") / f"mock_g_dx_{tag}.npy"
 
     g_samples = np.load(args.samples)
-    # g_samples = np.load(args.samples)
     g_mean = np.mean(g_samples, axis=0)
     g_truth = np.load(args.truth)
     dg = np.abs(g_mean - g_truth) / g_truth
     dg[dg>10.0] = np.nan
+
+    nx, _ = g_mean.shape
+    x = jnp.linspace(-L, L, nx)
+
+    print(np.std(g_mean))
+    print(np.mean(g_mean))
+    print(np.nanmean(dg))
 
     dx = args.dx
     nz = int(8.0/dx) + 1
@@ -98,7 +99,7 @@ def main():
     )
 
     fig, axes = plt.subplots(
-        2, 3, figsize=(16, 9), constrained_layout=True
+        2, 3, figsize=(16.5, 9), constrained_layout=True
     )
 
     for row in range(2):
@@ -122,8 +123,8 @@ def main():
             )
 
             ax.set(
-                xlabel="x [kpc]",
-                ylabel="y [kpc]",
+                xlabel="x (kpc)",
+                ylabel="y (kpc)",
                 title=titles[row][col],
                 aspect="equal"
             )
@@ -133,7 +134,28 @@ def main():
             label = "Relative error" if col == 2 else ("g" if row == 0 else "U")
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.05)
-            fig.colorbar(im, cax=cax, label=label)
+            cbar = fig.colorbar(im, cax=cax, label=label)
+
+            if col != 2:
+                ticks = np.geomspace(norm.vmin, norm.vmax, 5)
+                cbar.set_ticks(ticks)
+                cbar.minorticks_off()
+
+                cbar.formatter = FuncFormatter(
+                    lambda value, pos: f"{value / 1e-4:.2g}"
+                )
+                cbar.update_ticks()
+                cbar.ax.set_title("1e−4", fontsize=11, pad=8)
+            # cbar = fig.colorbar(im, cax=cax, label=label)
+
+            # if col != 2:  # Apply to g and U, not relative errors.
+            #     formatter = ScalarFormatter(useOffset=False)
+            #     formatter.set_scientific(True)
+            #     formatter.set_powerlimits((-4, -4))
+            #     cbar.formatter = formatter
+            #     cbar.update_ticks()
+
+            # fig.colorbar(im, cax=cax, label=label)
 
     fig.savefig(output, dpi=150)
     plt.close(fig)
@@ -171,8 +193,8 @@ def main():
             )
 
             ax.set(
-                xlabel="x [kpc]",
-                ylabel="y [kpc]",
+                xlabel="x (kpc)",
+                ylabel="y (kpc)",
                 title=titles[row][col],
                 aspect="equal",
             )
@@ -181,7 +203,15 @@ def main():
 
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.05)
-            fig.colorbar(im, cax=cax, label="g")
+            cbar = fig.colorbar(im, cax=cax, label="g")
+            cbar.set_ticks(np.geomspace(norm.vmin, norm.vmax, 5))
+            cbar.minorticks_off()
+            cbar.formatter = FuncFormatter(
+                lambda value, pos: f"{value / 1e-4:.2g}"
+            )
+            cbar.update_ticks()
+            cbar.ax.set_title("1e−4", fontsize=11, pad=8)
+            # fig.colorbar(im, cax=cax, label="g")
 
     fig.savefig(output_samp, dpi=150)
     plt.close(fig)

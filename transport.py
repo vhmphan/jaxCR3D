@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from src.source import make_source_prior
 from src.solver import solve_u, solve_u_sg, sheet_source, residual_norm
@@ -89,7 +90,7 @@ def main():
     g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1]
     g = jnp.rot90(g, k=1)
 
-    E = 10.0 # GeV
+    E = 30.0 # GeV
     beta = jnp.sqrt((E+mp)**2 - mp**2)/(E+mp)
     D0 = func_D0(E) # pc^2/yr
     Q0 = func_Q0(E) # GeV^-1
@@ -98,7 +99,7 @@ def main():
     source = make_source_prior((nx-2, ny-2), dx)
     latent = source.init(jax.random.PRNGKey(args.seed))
     tag = np.format_float_positional(float(dx), trim="-").replace(".", "p")
-    probe_fac = 100.0
+    probe_fac = 1.0
     nH = np.load(f"gas_SOD_dx_{tag}.npy") * probe_fac
     sg = (nH * sigma_p * beta * 3.0e10) * 365.0 * 86400.0 * 1.0e6 / D0
      
@@ -119,15 +120,30 @@ def main():
     np.save(output / f"prop_g_dx_{tag}.npy", np.asarray(g, dtype=np.float64))
     np.save(output / f"prop_ufull_dx_{tag}.npy", np.asarray(U, dtype=np.float64))
 
+    units = (
+        r"$\Sigma_{\rm H}(x,y)\,(M_\odot\,\mathrm{pc}^{-2})$",  # Example: verify your surface-density unit
+        r"$g(x,y)\,({\rm kpc}^{-2})$",
+        r"$u_{\rm CR}(x,y,z=0\,{\rm kpc})\,({\rm GeV^{-1} \,cm^{-3}})$",
+    )
+
     fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
-    for ax, xx, yy, field, title, ranges in zip(
+    for ax, xx, yy, field, title, ranges, unit in zip(
         axes, (x, x, x), (y, y, y),
-        (surface, np.pad(g,1), U[:, :, nz//2]), ("Gas surface density", "Source distribution", f"10 GeV CRs at z = {int(z[nz//2]):g} kpc"),
+        (surface, np.pad(g,1), np.mean(U[:, :, nz//2-2:nz//2+3], axis=2)), ("Gas surface density", "Source distribution", f"30 GeV CRs at z = {int(z[nz//2]):g} kpc"),
         ([0.0, 20.0 * probe_fac], [0, np.max(g)], [0, np.max(U[:, :, nz//2])]),
+        units,
     ):
-        im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto", vmin=ranges[0], vmax=ranges[1])
-        fig.colorbar(im, ax=ax)
-        ax.set(xlabel="x", ylabel="y", title=title, aspect="equal")
+        im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto", vmin=ranges[0], vmax=ranges[1], cmap="magma")
+        # cbar = fig.colorbar(im, ax=ax)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="4%", pad=0.10)
+        cbar = fig.colorbar(im, cax=cax)
+        cbar.set_label(unit, fontsize=12)
+        if ax is axes[1] or ax is axes[2]:
+            cbar.formatter.set_powerlimits((0, 0))
+            cbar.update_ticks()
+        ax.plot(-8.0, 0.0, marker="x", color="cyan", markersize=10, markeredgewidth=2, linestyle="none")
+        ax.set(xlabel="x (kpc)", ylabel="y (kpc)", title=title, aspect="equal")
     fig.savefig(output / f"fg_transport_dx_{tag}.png", dpi=150)
     plt.close(fig)
     print("Saved arrays and plot to", output)
