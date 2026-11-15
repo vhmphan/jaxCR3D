@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 from src.source import make_source_prior
 from src.solver import solve_u, solve_u_sg, sheet_source, residual_norm
-from src.gsnr import func_g, func_gSNR_AMS09
+from src.spiral import func_g, func_gSNR_AMS09
 from jax.scipy.special import gammaln
 
 sigma_p = 30e-27 * (1.0 + 4.0**0.667*0.1) # cm^2
@@ -86,7 +86,7 @@ def main():
     rG = np.hypot(X, Y)
     phiG = np.mod(np.arctan2(Y, X), 2.0 * np.pi)
 
-    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1].T
+    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1]
     g = jnp.rot90(g, k=1)
 
     E = 10.0 # GeV
@@ -98,21 +98,17 @@ def main():
     source = make_source_prior((nx-2, ny-2), dx)
     latent = source.init(jax.random.PRNGKey(args.seed))
     tag = np.format_float_positional(float(dx), trim="-").replace(".", "p")
-    probe_fac = 10.0
+    probe_fac = 100.0
     nH = np.load(f"gas_SOD_dx_{tag}.npy") * probe_fac
     sg = (nH * sigma_p * beta * 3.0e10) * 365.0 * 86400.0 * 1.0e6 / D0
-
-    # nH = source(latent) * 1.0e4
-    # sg = sheet_source(nH * sigma_p * beta * 3.0e10, nz, dx) * 365.0 * 86400.0 * 1.0e6 / D0
-    # print(sg.shape)
      
     U = solve_u_sg(S, sg, dx) / (3.086e21**3)
 
     print("Diffusion time: %.2e Myr" % ((L)**2/(2*D0)))
     print("Loss time:      %.2e Myr" % (1.0 / (np.mean(nH) * sigma_p * 3.0e10 * 365.0 * 86400.0 * 1.0e6)))    
     print("Backend:", jax.default_backend())
-    # print("Cube shape:", U.shape)
-    # print("Relative stencil residual:", float(residual_norm(U, S, dx)))
+    print("Cube shape:", U.shape)
+    print("Relative stencil residual:", float(residual_norm(U, S, dx)))
     print("Mean of source surface density: ", np.mean(g))
 
     surface = (np.sum(nH, axis=2) * (z[1]-z[0]) * 3.086e21 * 8.01e-21)
@@ -129,7 +125,7 @@ def main():
         (surface, np.pad(g,1), U[:, :, nz//2]), ("Gas surface density", "Source distribution", f"10 GeV CRs at z = {int(z[nz//2]):g} kpc"),
         ([0.0, 20.0 * probe_fac], [0, np.max(g)], [0, np.max(U[:, :, nz//2])]),
     ):
-        im = ax.pcolormesh(xx, yy, np.asarray(field), shading="auto", vmin=ranges[0], vmax=ranges[1], cmap="magma")
+        im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto", vmin=ranges[0], vmax=ranges[1])
         fig.colorbar(im, ax=ax)
         ax.set(xlabel="x", ylabel="y", title=title, aspect="equal")
     fig.savefig(output / f"fg_transport_dx_{tag}.png", dpi=150)

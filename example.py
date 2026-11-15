@@ -12,16 +12,17 @@ import matplotlib.pyplot as plt
 
 from src.source import make_source_prior
 from src.solver import solve_u, sheet_source, residual_norm
-from src.gsnr import func_g, func_gSNR_AMS09
+from src.spiral import func_g, func_gSNR_AMS09
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dx", type=float, default=0.2)
+    parser.add_argument("--dx", type=float, default=0.1)
     parser.add_argument("--L", type=float, default=12.0)
     parser.add_argument("--H", type=float, default=4.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", type=Path, default=Path("data"))
     args = parser.parse_args()
+
     dx, L, H = args.dx, args.L, args.H
     nx = ny = int(round(2*L/dx)) + 1
     nz = int(round(2*H/dx)) + 1
@@ -56,7 +57,7 @@ def main():
     rG = np.hypot(X, Y)
     phiG = np.mod(np.arctan2(Y, X), 2.0 * np.pi)
 
-    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1].T
+    g = func_gSNR_AMS09(rG, phiG, arr_rG, arr_frG)[1:-1, 1:-1]
     g = jnp.rot90(g, k=1)
     # print(g.shape)
 
@@ -87,7 +88,7 @@ def main():
         axes, (x[1:-1], x), (y[1:-1], y),
         (g, U[:, :, nz//2]), ("Source g", f"U at z = {float(z[nz//2]):g}"),
     ):
-        im = ax.pcolormesh(xx, yy, np.asarray(field), shading="auto", cmap="magma")
+        im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto", cmap="magma")
         fig.colorbar(im, ax=ax)
         ax.set(xlabel="x (kpc)", ylabel="y (kpc)", title=title, aspect="equal")
     fig.savefig(output / f"fg_mock_dx_{tag}.png", dpi=150)

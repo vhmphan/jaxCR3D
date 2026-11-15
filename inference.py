@@ -29,13 +29,28 @@ def sampler(i):
         return "nonlinear_resample"
     return "nonlinear_update"
 
-path = Path("data/mock_u_dx_0p2.npy")
+path = Path("data/mock_u_dx_0p1.npy")
 
 dx = float(path.stem.split("_dx_")[-1].replace("p", "."))
 U_data = np.load(path)
 mask_data = np.isfinite(U_data)
 nx, ny, nz = U_data.shape
 L, H = (nx - 1) * dx / 2.0, (nz - 1) * dx / 2.0 
+
+x = y = np.linspace(-L, L, nx)
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
+for ax, xx, yy, field, title in zip(
+    axes, (x, x), (y, y),
+    (U_data[:, :, nz//2], U_data[:, :, nz//2]), ("Source g", f"U"),
+):
+    im = ax.pcolormesh(xx, yy, np.asarray(field).T, shading="auto", cmap="magma")
+    fig.colorbar(im, ax=ax)
+    ax.set(xlabel="x (kpc)", ylabel="y (kpc)", title=title, aspect="equal")
+fig.savefig("data/fg_test_dx_{tag}.png", dpi=150)
+plt.close(fig)
+
+
 print("Cosmic-ray halo:", L, "x", H, "kpc")
 
 source = make_source_prior((nx-2, ny-2), dx)
@@ -43,8 +58,8 @@ source = make_source_prior((nx-2, ny-2), dx)
 class Forward(jft.Model):
     def __init__(self, g):
         self.g = g
-        # Track a method with which a random input for the model. This is not
-        # strictly required but is usually handy when building deep models.
+
+        # Track a method with which a random input for the model. 
         super().__init__(init=g.init)
 
     def CRcube(self, x):
@@ -60,12 +75,8 @@ class Forward(jft.Model):
 
 forward = Forward(source)
 
-# %%
+# Build noise for mock data
 key = random.PRNGKey(42)
-# key, k_f, k_n = random.split(key, 3)
-# synth_truth = U_data[mask_data]/U_mean 
-# synth_noise = 0.1 * synth_truth
-# synth_data = synth_truth + synth_noise
 
 synth_truth = jnp.asarray(U_data[mask_data])
 
@@ -86,7 +97,7 @@ synth_noise = synth_data - synth_truth
 lh = jft.Gaussian(synth_data, noise_cov_inv=1.0 / synth_noise**2).amend(forward)
 
 # Hyperparameters for nifty
-n_vi_iterations = 3
+n_vi_iterations = 20
 delta = 1e-5
 n_samples = 4
 
@@ -138,15 +149,3 @@ samples, state = jft.optimize_kl(
     resume=False,
     callback=save_vi_samples,
 )
-
-# # Save samples into file
-# output = Path("run")
-# output.mkdir(parents=True, exist_ok=True)
-
-# g_samples = np.stack([
-#     np.asarray(forward.g(sample))
-#     for sample in samples
-# ])
-
-# tag = np.format_float_positional(float(dx), trim="-").replace(".", "p")
-# np.save(output / f"g_samples_dx_{tag}.npy", g_samples * U_mean)

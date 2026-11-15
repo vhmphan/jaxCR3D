@@ -16,33 +16,49 @@ def add_mask_circle(ax, Lr, zoom=False):
     ))
     ax.legend(loc="upper left", fontsize="small")
     if zoom:
-        ax.set(xlim=(- 8.0 - Lr, -8.0 + Lr), ylim=(-Lr, Lr))
+        ax.set(xlim=(-8.0-Lr, -8.0+Lr), ylim=(-Lr, Lr))
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
 
+    parser.add_argument("--dx", type=float, default=0.1)
     parser.add_argument("--run-dir", type=Path, default=Path("run"))
     parser.add_argument("--vi-iteration", type=int, default=1)
-    parser.add_argument("--samples", type=Path, default=Path("g_samples_dx_0p2.npy"))
-    # parser.add_argument("--samples", type=Path, default=Path("run-10/g_samples_dx_0p2.npy"))
-    parser.add_argument("--truth", type=Path, default=Path("data/mock_g_dx_0p2.npy"))
-    parser.add_argument("--zoom", action="store_true", help="Show +/-2 kpc around the mask center (x=8, y=0 kpc).")
-    args = parser.parse_args()
-
-    samples_path = (
-        args.run_dir
-        / f"vi-samples-{args.vi_iteration}"
-        / args.samples
+    parser.add_argument("--samples", type=Path, default=None)
+    parser.add_argument("--truth", type=Path, default=None)
+    parser.add_argument(
+        "--zoom", action="store_true",
+        help="Show +/-2 kpc around the mask center (x=-8, y=0 kpc).",
     )
 
-    g_samples = np.load(samples_path)
+    args = parser.parse_args()
+
+    # samples_path = (
+    #     args.run_dir
+    #     / f"vi-samples-{args.vi_iteration}"
+    #     / args.samples
+    # )
+
+    tag = np.format_float_positional(args.dx, trim="-").replace(".", "p")
+
+    if args.samples is None:
+        args.samples = (
+            args.run_dir
+            / f"vi-samples-{args.vi_iteration}"
+            / f"g_samples_dx_{tag}.npy"
+        )
+
+    if args.truth is None:
+        args.truth = Path("data") / f"mock_g_dx_{tag}.npy"
+
+    g_samples = np.load(args.samples)
     # g_samples = np.load(args.samples)
     g_mean = np.mean(g_samples, axis=0)
     g_truth = np.load(args.truth)
     dg = np.abs(g_mean - g_truth) / g_truth
     dg[dg>10.0] = np.nan
 
-    dx = 0.2
+    dx = args.dx
     nz = int(8.0/dx) + 1
 
     U_mean = solve_u(sheet_source(g_mean, nz, dx), dx)

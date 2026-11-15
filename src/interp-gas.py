@@ -58,6 +58,7 @@ def plot_surface(mean_hi, mean_h2, x, y, z, plot_name):
 
     # H2 molecules contain two hydrogen atoms. No helium correction.
     factor = (m_p / u.cm**2).to_value(u.M_sun / u.pc**2)
+    print(factor)
     surface_hi *= factor
     surface_h2 *= 2 * factor
     label = r"Surface density [M$_\odot$ pc$^{-2}$]"
@@ -73,7 +74,7 @@ def plot_surface(mean_hi, mean_h2, x, y, z, plot_name):
         ("HI column density", "H₂ column density"),
     ):
         im = ax.imshow(
-            surface,
+            surface.T,
             origin="lower",
             cmap="magma",
             interpolation="nearest",
@@ -107,6 +108,10 @@ def main():
     mean_h2 = jnp.asarray(np.asarray(mean_h2, dtype=np.float64))
     mean_hi = jnp.where(jnp.isnan(mean_hi), 0.0, mean_hi)
     mean_h2 = jnp.where(jnp.isnan(mean_h2), 0.0, mean_h2)
+    mean_hi = mean_hi.transpose(1, 0, 2)
+    mean_h2 = mean_h2.transpose(1, 0, 2)
+
+    print(mean_hi.shape)
     
     x = coordinates(hi.header, 3) - 8.178
     y = coordinates(hi.header, 2)
@@ -114,7 +119,7 @@ def main():
 
     L = 12.0
     H = 4.0
-    dx_int = 0.2
+    dx_int = 0.1
     nx_int = ny_int = int(2.0*L/dx_int) + 1
     nz_int = int(2.0*H/dx_int) + 1
     x_int = jnp.linspace(-L, L, nx_int)
@@ -126,11 +131,35 @@ def main():
 
     mean_h_int = mean_hi_int + 2.0 * mean_h2_int 
     tag = np.format_float_positional(float(dx_int), trim="-").replace(".", "p")
-    np.save(f"gas_SOD_dx_{tag}.npy", np.asarray(mean_h_int))
+    np.save(f"gas_SOD_dx_{tag}.npy", np.asarray(mean_h_int))#[0:2, 0:3, 0:4])
 
     plot_surface(mean_hi, mean_h2, x, y, z, 'origin')
     plot_surface(mean_hi_int, mean_h2_int, x_int, y_int, z_int, 'interp')
 
+    fig, axes = plt.subplots(
+        1, 2, figsize=(12, 5), constrained_layout=True
+    )
+
+    for ax, surface, title in zip(
+        axes,
+        (np.sum(mean_hi, axis=0), np.sum(mean_hi, axis=1)),
+        ("HI column density", "H₂ column density"),
+    ):
+        im = ax.imshow(
+            surface.T,
+            origin="lower",
+            cmap="magma",
+            interpolation="nearest",
+            aspect="equal",
+            vmin=0,
+            vmax=100,
+            extent=[x[0], x[-1], z[0], z[-1]]
+        )
+        ax.set(title=title, xlabel="x pixel", ylabel="y pixel")
+        fig.colorbar(im, ax=ax, label=r"Column density [cm$^{-2}$]")
+
+    fig.savefig("fg_gas_surface_zprof.png", dpi=150)
+    plt.close(fig)
 
 if __name__ == "__main__":
     main()
